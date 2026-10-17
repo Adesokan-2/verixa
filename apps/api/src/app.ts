@@ -7,6 +7,7 @@ import { createLogger, type Logger } from "@verixa/shared-kernel";
 import Fastify from "fastify";
 
 import type { Container } from "./composition-root.js";
+import { errorResponseSchema, handleApiError } from "./http/error-response.js";
 import { registerContextRoutes } from "./composition/register-routes.js";
 import {
   NO_TRANSPORT_SECURITY,
@@ -95,6 +96,8 @@ export function buildApp(options: BuildAppOptions = {}) {
     },
   });
 
+  app.setErrorHandler(handleApiError);
+  app.addSchema(errorResponseSchema);
   app.addHook("onRoute", (route) => assertRouteValidationSchemas(route));
   if (process.env["NODE_ENV"] !== "production") {
     app.register(fastifySwagger, {
