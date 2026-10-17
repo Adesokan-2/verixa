@@ -3,6 +3,7 @@ import { createLogger, type Logger } from "@verixa/shared-kernel";
 import Fastify from "fastify";
 
 import type { Container } from "./composition-root.js";
+import { errorResponseSchema, handleApiError } from "./http/error-response.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerVerificationRoutes } from "./routes/verification.js";
 
@@ -54,6 +55,9 @@ export function buildApp(options: BuildAppOptions = {}) {
       },
     },
   });
+
+  app.setErrorHandler(handleApiError);
+  app.addSchema(errorResponseSchema);
 
   app.get("/health", () => {
     // Deliberately does not touch the database. This answers "is this process
