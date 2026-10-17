@@ -11,6 +11,7 @@ import type { Container } from "../composition-root.js";
 import { sendDomainError, sendError } from "../http/error-response.js";
 import { registerZodSchema } from "../openapi/zod-registry.js";
 import { z } from "zod";
+import { sendApiError, sendDomainError, sendError } from "../http/error-response.js";
 
 /**
  * JSON Schema for the registration body.
@@ -79,7 +80,7 @@ export function registerAuthRoutes<TLogger extends FastifyBaseLogger>(
   const loginBodySchema = registerZodSchema(app, "LoginBody", loginBodyZodSchema);
 
   app.post<{ Body: RegisterBody }>(
-    "/auth/register",
+    "/register",
     { schema: { body: registerBodySchema } },
     async (request, reply) => {
       try {
@@ -126,7 +127,7 @@ export function registerAuthRoutes<TLogger extends FastifyBaseLogger>(
   );
 
   app.post<{ Body: LoginBody }>(
-    "/auth/login",
+    "/login",
     { schema: { body: loginBodySchema } },
     async (request, reply) => {
       try {
@@ -171,7 +172,7 @@ export function registerAuthRoutes<TLogger extends FastifyBaseLogger>(
             "AuthenticateWithPassword returned an MFA-flow result, but /auth/login does not " +
               "yet handle one.",
           );
-          await reply.status(501).send({ error: "mfa_not_yet_supported" });
+          sendApiError(reply, "NOT_IMPLEMENTED", "MFA login is not yet supported.");
           return;
         }
 
