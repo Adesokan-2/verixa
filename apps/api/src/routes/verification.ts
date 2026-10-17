@@ -8,144 +8,109 @@ import type {
   RawServerDefault,
 } from "fastify";
 import { z } from "zod";
+import { registerZodSchema } from "../openapi/zod-registry.js";
 
-const submitVerificationSchema = {
-  schema: {
-    description: "Submit a new verification request",
-    tags: ["Verification"],
-    body: {
-      type: "object",
-      required: ["subjectUserId", "orgId", "verificationType"],
-      additionalProperties: false,
-      properties: {
-        subjectUserId: { type: "string" },
-        orgId: { type: "string" },
-        verificationType: { type: "string" },
-      },
-    },
-    response: {
-      201: {
-        type: "object",
-        properties: {
-          requestId: { type: "string" },
-          status: { type: "string" },
-        },
-      },
-    },
-  },
-};
+const submitVerificationZod = z
+  .object({
+    subjectUserId: z.string(),
+    orgId: z.string(),
+    verificationType: z.string(),
+  })
+  .strict();
+const requestIdZod = z.object({ requestId: z.string() }).strict();
+const decisionBodyZod = z
+  .object({
+    decision: z.enum(["approve", "reject", "request-more-info"]),
+    reason: z.string().optional(),
+  })
+  .strict();
 
-const submitEvidenceSchema = {
-  schema: {
-    description: "Submit evidence for a verification request",
-    tags: ["Verification"],
-    params: {
-      type: "object",
-      required: ["requestId"],
-      properties: {
-        requestId: { type: "string" },
-      },
-    },
-    response: {
-      201: {
-        type: "object",
-        properties: {
-          evidenceId: { type: "string" },
-        },
-      },
-    },
-  },
-};
-
-const getStatusSchema = {
-  schema: {
-    description: "Get verification request status",
-    tags: ["Verification"],
-    params: {
-      type: "object",
-      required: ["requestId"],
-      properties: {
-        requestId: { type: "string" },
-      },
-    },
-    response: {
-      200: {
-        type: "object",
-        properties: {
-          requestId: { type: "string" },
-          status: { type: "string" },
-        },
-      },
-    },
-  },
-};
-
-const reviewQueueSchema = {
-  schema: {
-    description: "List review queue (reviewer only)",
-    tags: ["Review Queue"],
-    response: {
-      200: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            requestId: { type: "string" },
-            status: { type: "string" },
+function routeSchemas<TLogger extends FastifyBaseLogger>(
+  fastify: FastifyInstance<
+    RawServerDefault,
+    RawRequestDefaultExpression,
+    RawReplyDefaultExpression,
+    TLogger
+  >,
+) {
+  return {
+    submitVerification: {
+      schema: {
+        description: "Submit a new verification request",
+        tags: ["Verification"],
+        body: registerZodSchema(fastify, "SubmitVerificationBody", submitVerificationZod),
+        response: {
+          201: {
+            type: "object",
+            properties: { requestId: { type: "string" }, status: { type: "string" } },
           },
         },
       },
     },
-  },
-};
-
-const claimCaseSchema = {
-  schema: {
-    description: "Claim next review case (reviewer only)",
-    tags: ["Review Queue"],
-    response: {
-      200: {
-        type: "object",
-        properties: {
-          requestId: { type: "string" },
-          status: { type: "string" },
+    submitEvidence: {
+      schema: {
+        description: "Submit evidence for a verification request",
+        tags: ["Verification"],
+        params: registerZodSchema(fastify, "VerificationRequestParams", requestIdZod),
+        response: { 201: { type: "object", properties: { evidenceId: { type: "string" } } } },
+      },
+    },
+    getStatus: {
+      schema: {
+        description: "Get verification request status",
+        tags: ["Verification"],
+        params: registerZodSchema(fastify, "VerificationStatusParams", requestIdZod),
+        response: {
+          200: {
+            type: "object",
+            properties: { requestId: { type: "string" }, status: { type: "string" } },
+          },
         },
       },
     },
-  },
-};
-
-const decisionSchema = {
-  schema: {
-    description: "Review decision: approve, reject, or request-more-info (reviewer only)",
-    tags: ["Review Queue"],
-    params: {
-      type: "object",
-      required: ["requestId"],
-      properties: {
-        requestId: { type: "string" },
-      },
-    },
-    body: {
-      type: "object",
-      required: ["decision"],
-      additionalProperties: false,
-      properties: {
-        decision: { type: "string", enum: ["approve", "reject", "request-more-info"] },
-        reason: { type: "string" },
-      },
-    },
-    response: {
-      200: {
-        type: "object",
-        properties: {
-          requestId: { type: "string" },
-          status: { type: "string" },
+    reviewQueue: {
+      schema: {
+        description: "List review queue (reviewer only)",
+        tags: ["Review Queue"],
+        response: {
+          200: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { requestId: { type: "string" }, status: { type: "string" } },
+            },
+          },
         },
       },
     },
-  },
-};
+    claimCase: {
+      schema: {
+        description: "Claim next review case (reviewer only)",
+        tags: ["Review Queue"],
+        response: {
+          200: {
+            type: "object",
+            properties: { requestId: { type: "string" }, status: { type: "string" } },
+          },
+        },
+      },
+    },
+    decision: {
+      schema: {
+        description: "Review decision: approve, reject, or request-more-info (reviewer only)",
+        tags: ["Review Queue"],
+        params: registerZodSchema(fastify, "ReviewDecisionParams", requestIdZod),
+        body: registerZodSchema(fastify, "ReviewDecisionBody", decisionBodyZod),
+        response: {
+          200: {
+            type: "object",
+            properties: { requestId: { type: "string" }, status: { type: "string" } },
+          },
+        },
+      },
+    },
+  };
+}
 
 function checkReviewer(req: FastifyRequest, reply: FastifyReply): boolean {
   const authHeader = req.headers["authorization"];
@@ -175,14 +140,9 @@ export function registerVerificationRoutes<TLogger extends FastifyBaseLogger>(
     TLogger
   >,
 ): void {
-  fastify.post("/verification", submitVerificationSchema, async (req, reply) => {
-    const body = z
-      .object({
-        subjectUserId: z.string(),
-        orgId: z.string(),
-        verificationType: z.string(),
-      })
-      .parse(req.body);
+  const schemas = routeSchemas(fastify);
+  fastify.post("/verification", schemas.submitVerification, async (req, reply) => {
+    const body = req.body as z.infer<typeof submitVerificationZod>;
 
     return reply.status(201).send({
       requestId: "req_mock_123",
@@ -191,8 +151,8 @@ export function registerVerificationRoutes<TLogger extends FastifyBaseLogger>(
     });
   });
 
-  fastify.post("/verification/:requestId/evidence", submitEvidenceSchema, async (req, reply) => {
-    const params = z.object({ requestId: z.string() }).parse(req.params);
+  fastify.post("/verification/:requestId/evidence", schemas.submitEvidence, async (req, reply) => {
+    const params = req.params as z.infer<typeof requestIdZod>;
     // `@fastify/multipart` augments the request with `file()`, but the
     // plugin is not registered yet, so the method may genuinely be absent.
     // Typed narrowly rather than cast to `any`: the shape actually relied on
@@ -219,20 +179,20 @@ export function registerVerificationRoutes<TLogger extends FastifyBaseLogger>(
     });
   });
 
-  fastify.get("/verification/:requestId", getStatusSchema, async (req, reply) => {
-    const params = z.object({ requestId: z.string() }).parse(req.params);
+  fastify.get("/verification/:requestId", schemas.getStatus, async (req, reply) => {
+    const params = req.params as z.infer<typeof requestIdZod>;
     return reply.send({
       requestId: params.requestId,
       status: "pending_evidence",
     });
   });
 
-  fastify.get("/verification/review-queue", reviewQueueSchema, async (req, reply) => {
+  fastify.get("/verification/review-queue", schemas.reviewQueue, async (req, reply) => {
     if (!checkReviewer(req, reply)) return;
     return reply.send([]);
   });
 
-  fastify.post("/verification/review-queue/claim", claimCaseSchema, async (req, reply) => {
+  fastify.post("/verification/review-queue/claim", schemas.claimCase, async (req, reply) => {
     if (!checkReviewer(req, reply)) return;
     return reply.send({
       requestId: "req_claimed_123",
@@ -242,16 +202,11 @@ export function registerVerificationRoutes<TLogger extends FastifyBaseLogger>(
 
   fastify.post(
     "/verification/review-queue/:requestId/decision",
-    decisionSchema,
+    schemas.decision,
     async (req, reply) => {
       if (!checkReviewer(req, reply)) return;
-      const params = z.object({ requestId: z.string() }).parse(req.params);
-      const body = z
-        .object({
-          decision: z.enum(["approve", "reject", "request-more-info"]),
-          reason: z.string().optional(),
-        })
-        .parse(req.body);
+      const params = req.params as z.infer<typeof requestIdZod>;
+      const body = req.body as z.infer<typeof decisionBodyZod>;
 
       const newStatus =
         body.decision === "approve"
