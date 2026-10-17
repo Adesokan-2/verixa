@@ -16,6 +16,7 @@ import {
 } from "./plugins/security-headers.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerVerificationRoutes } from "./routes/verification.js";
+import { assertRouteValidationSchemas } from "./http/route-validation.js";
 
 /**
  * Re-exported so callers (and the integration suite) can name the policy
@@ -94,6 +95,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     },
   });
 
+  app.addHook("onRoute", (route) => assertRouteValidationSchemas(route));
   if (process.env["NODE_ENV"] !== "production") {
     app.register(fastifySwagger, {
       mode: "static",
