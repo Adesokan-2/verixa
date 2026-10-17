@@ -5,6 +5,7 @@ import Fastify from "fastify";
 import type { Container } from "./composition-root.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerVerificationRoutes } from "./routes/verification.js";
+import { assertRouteValidationSchemas } from "./http/route-validation.js";
 
 export interface BuildAppOptions {
   readonly logger?: Logger;
@@ -55,6 +56,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     },
   });
 
+  app.addHook("onRoute", (route) => assertRouteValidationSchemas(route));
   app.get("/health", () => {
     // Deliberately does not touch the database. This answers "is this process
     // alive and serving", which is what a liveness probe needs; a probe that
