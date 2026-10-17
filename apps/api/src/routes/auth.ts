@@ -8,6 +8,9 @@ import type {
 } from "fastify";
 
 import type { Container } from "../composition-root.js";
+import { sendDomainError, sendError } from "../http/error-response.js";
+import { registerZodSchema } from "../openapi/zod-registry.js";
+import { z } from "zod";
 import { sendApiError, sendDomainError, sendError } from "../http/error-response.js";
 
 /**
@@ -23,26 +26,17 @@ import { sendApiError, sendDomainError, sendError } from "../http/error-response
  * The split: schema rejects requests that are malformed. The domain rejects
  * requests that are well-formed and wrong.
  */
-const registerBodySchema = {
-  type: "object",
-  required: ["email", "displayName", "password"],
-  additionalProperties: false,
-  properties: {
-    email: { type: "string" },
-    displayName: { type: "string" },
-    password: { type: "string" },
-    givenName: { type: "string" },
-    familyName: { type: "string" },
-  },
-} as const;
+const registerBodyZodSchema = z
+  .object({
+    email: z.string(),
+    displayName: z.string(),
+    password: z.string(),
+    givenName: z.string().optional(),
+    familyName: z.string().optional(),
+  })
+  .strict();
 
-interface RegisterBody {
-  email: string;
-  displayName: string;
-  password: string;
-  givenName?: string;
-  familyName?: string;
-}
+type RegisterBody = z.infer<typeof registerBodyZodSchema>;
 
 /**
  * JSON Schema for the login body.
@@ -55,20 +49,9 @@ interface RegisterBody {
  * addresses are rejected by the use case, as failed logins, indistinguishable
  * from every other kind.
  */
-const loginBodySchema = {
-  type: "object",
-  required: ["email", "password"],
-  additionalProperties: false,
-  properties: {
-    email: { type: "string" },
-    password: { type: "string" },
-  },
-} as const;
+const loginBodyZodSchema = z.object({ email: z.string(), password: z.string() }).strict();
 
-interface LoginBody {
-  email: string;
-  password: string;
-}
+type LoginBody = z.infer<typeof loginBodyZodSchema>;
 
 /**
  * Authentication routes.
@@ -93,6 +76,9 @@ export function registerAuthRoutes<TLogger extends FastifyBaseLogger>(
   >,
   container: Container,
 ): void {
+  const registerBodySchema = registerZodSchema(app, "RegisterBody", registerBodyZodSchema);
+  const loginBodySchema = registerZodSchema(app, "LoginBody", loginBodyZodSchema);
+
   app.post<{ Body: RegisterBody }>(
     "/register",
     { schema: { body: registerBodySchema } },

@@ -17,6 +17,7 @@ import {
 } from "./plugins/security-headers.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerVerificationRoutes } from "./routes/verification.js";
+import { enforceRegisteredRouteSchemas } from "./openapi/zod-registry.js";
 import { assertRouteValidationSchemas } from "./http/route-validation.js";
 
 /**
@@ -135,6 +136,12 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerSecurityHeaders(app, options.securityHeaders ?? NO_TRANSPORT_SECURITY);
 
   if (options.container !== undefined) {
+    enforceRegisteredRouteSchemas(app);
+    registerAuthRoutes(app, options.container);
+    registerAdminAuthorizationRoutes(app, options.container.authorization);
+    // Takes only the Fastify instance: this route group resolves what it
+    // needs from the request rather than from the container.
+    registerVerificationRoutes(app);
     registerContextRoutes(app, options.container);
   }
 
