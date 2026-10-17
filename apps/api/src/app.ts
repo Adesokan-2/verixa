@@ -7,6 +7,7 @@ import { createLogger, type Logger } from "@verixa/shared-kernel";
 import Fastify from "fastify";
 
 import type { Container } from "./composition-root.js";
+import { registerSecurityHeaders } from "./plugins/security-headers.js";
 import { errorResponseSchema, handleApiError } from "./http/error-response.js";
 import { registerContextRoutes } from "./composition/register-routes.js";
 import {
@@ -97,6 +98,12 @@ export function buildApp(options: BuildAppOptions = {}) {
     },
   });
 
+  // Security headers are registered before any route exists, so "all routes
+  // return the configured header set" is true by construction rather than by
+  // every route remembering to ask (Issue 203). `/health` below is the proof:
+  // it is the one endpoint a deployment is most likely to expose without
+  // thinking about it.
+  registerSecurityHeaders(app);
   app.setErrorHandler(handleApiError);
   app.addSchema(errorResponseSchema);
   app.addHook("onRoute", (route) => assertRouteValidationSchemas(route));
