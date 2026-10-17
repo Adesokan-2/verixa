@@ -1,8 +1,13 @@
 import { registerAdminAuthorizationRoutes } from "@verixa/authorization";
+import { fileURLToPath } from "node:url";
+
+import fastifySwagger from "@fastify/swagger";
+import fastifySwaggerUi from "@fastify/swagger-ui";
 import { createLogger, type Logger } from "@verixa/shared-kernel";
 import Fastify from "fastify";
 
 import type { Container } from "./composition-root.js";
+import { registerContextRoutes } from "./composition/register-routes.js";
 import {
   NO_TRANSPORT_SECURITY,
   registerSecurityHeaders,
@@ -89,6 +94,26 @@ export function buildApp(options: BuildAppOptions = {}) {
     },
   });
 
+  if (process.env["NODE_ENV"] !== "production") {
+    app.register(fastifySwagger, {
+      mode: "static",
+      specification: {
+        path: fileURLToPath(new URL("../openapi/openapi.yaml", import.meta.url)),
+        baseDir: fileURLToPath(new URL("../openapi", import.meta.url)),
+      },
+    });
+    app.register(fastifySwaggerUi, {
+      routePrefix: "/docs",
+      staticCSP: true,
+      uiConfig: {
+        docExpansion: "list",
+        deepLinking: true,
+        url: "/docs/openapi.json",
+      },
+    });
+    app.get("/docs/openapi.json", () => app.swagger());
+  }
+
   app.get("/health", () => {
     // Deliberately does not touch the database. This answers "is this process
     // alive and serving", which is what a liveness probe needs; a probe that
@@ -105,11 +130,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerSecurityHeaders(app, options.securityHeaders ?? NO_TRANSPORT_SECURITY);
 
   if (options.container !== undefined) {
-    registerAuthRoutes(app, options.container);
-    registerAdminAuthorizationRoutes(app, options.container.authorization);
-    // Takes only the Fastify instance: this route group resolves what it
-    // needs from the request rather than from the container.
-    registerVerificationRoutes(app);
+    registerContextRoutes(app, options.container);
   }
 
   return app;
