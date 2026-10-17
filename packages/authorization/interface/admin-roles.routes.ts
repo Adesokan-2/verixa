@@ -152,7 +152,7 @@ export function registerAdminAuthorizationRoutes<TLogger extends FastifyBaseLogg
     return true;
   };
 
-  app.get("/admin/roles", async (request, reply) => {
+  app.get("/roles", async (request, reply) => {
     if (!(await requirePermission(request, reply, "roles:read"))) return;
     return authorization.listRoles();
   });
@@ -178,6 +178,23 @@ export function registerAdminAuthorizationRoutes<TLogger extends FastifyBaseLogg
   app.patch<{ Params: RoleParams; Body: UpdateRoleBody }>(
     "/admin/roles/:roleId",
     { schema: { params: roleParamsSchema, body: updateRoleBodySchema } },
+  app.post<{ Body: CreateRoleBody }>("/roles", async (request, reply) => {
+    if (!(await requirePermission(request, reply, "roles:write"))) return;
+    if (request.body.name.trim() === "" || request.body.description.trim() === "") {
+      return reply.code(400).send({ error: "name and description are required" });
+    }
+    try {
+      const role = await authorization.createRole({
+        ...request.body,
+        isSystemRole: false,
+      });
+      return reply.code(201).send(role);
+    } catch (error) {
+      return replyError(reply, error);
+    }
+  });
+  app.patch<{ Params: RoleParams; Body: UpdateRoleBody }>(
+    "/roles/:roleId",
     async (request, reply) => {
       if (!(await requirePermission(request, reply, "roles:write"))) return;
       try {
@@ -201,12 +218,23 @@ export function registerAdminAuthorizationRoutes<TLogger extends FastifyBaseLogg
     },
   );
   app.get("/admin/permissions", async (request, reply) => {
+  app.delete<{ Params: RoleParams }>("/roles/:roleId", async (request, reply) => {
+    if (!(await requirePermission(request, reply, "roles:write"))) return;
+    try {
+      await authorization.deleteRole(request.params.roleId);
+      return reply.code(204).send();
+    } catch (error) {
+      return replyError(reply, error);
+    }
+  });
+  app.get("/permissions", async (request, reply) => {
     if (!(await requirePermission(request, reply, "roles:read"))) return;
     return authorization.listPermissions();
   });
   app.post<{ Params: RoleParams; Body: PermissionBody }>(
     "/admin/roles/:roleId/permissions",
     { schema: { params: roleParamsSchema, body: permissionBodySchema } },
+    "/roles/:roleId/permissions",
     async (request, reply) => {
       if (!(await requirePermission(request, reply, "roles:write"))) return;
       try {
@@ -219,6 +247,7 @@ export function registerAdminAuthorizationRoutes<TLogger extends FastifyBaseLogg
   app.delete<{ Params: RoleParams; Body: PermissionBody }>(
     "/admin/roles/:roleId/permissions",
     { schema: { params: roleParamsSchema, body: permissionBodySchema } },
+    "/roles/:roleId/permissions",
     async (request, reply) => {
       if (!(await requirePermission(request, reply, "roles:write"))) return;
       try {
@@ -231,6 +260,7 @@ export function registerAdminAuthorizationRoutes<TLogger extends FastifyBaseLogg
   app.get<{ Params: UserParams; Querystring: RoleQuery }>(
     "/admin/users/:userId/roles",
     { schema: { params: userParamsSchema, querystring: assignmentQuerySchema } },
+    "/users/:userId/roles",
     async (request, reply) => {
       if (!(await requirePermission(request, reply, "roles:read"))) return;
       const callerOrganizationId = header(request, "x-organization-id");
@@ -247,6 +277,7 @@ export function registerAdminAuthorizationRoutes<TLogger extends FastifyBaseLogg
   app.post<{ Params: UserParams; Body: AssignmentBody }>(
     "/admin/users/:userId/roles",
     { schema: { params: userParamsSchema, body: assignmentBodySchema } },
+    "/users/:userId/roles",
     async (request, reply) => {
       if (!(await requirePermission(request, reply, "roles:write"))) return;
       try {
@@ -286,6 +317,7 @@ export function registerAdminAuthorizationRoutes<TLogger extends FastifyBaseLogg
   app.delete<{ Params: { assignmentId: string } }>(
     "/admin/user-role-assignments/:assignmentId",
     { schema: { params: assignmentParamsSchema } },
+    "/user-role-assignments/:assignmentId",
     async (request, reply) => {
       if (!(await requirePermission(request, reply, "roles:write"))) return;
       try {
