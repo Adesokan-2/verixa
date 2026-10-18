@@ -7,6 +7,7 @@ import Fastify from "fastify";
 
 import { registerContextRoutes } from "./composition/register-routes.js";
 import type { Container } from "./composition-root.js";
+import { errorResponseSchema, handleApiError } from "./http/error-response.js";
 import { registerContextRoutes } from "./composition/register-routes.js";
 import { errorResponseSchema, handleApiError } from "./http/error-response.js";
 import { assertRouteValidationSchemas } from "./http/route-validation.js";
@@ -180,6 +181,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     return { status: "ok" };
   });
 
+  void registerGraphQLServer(app, { container: options.container });
   registerGraphQLServer(app);
 
   // Registered on `app` itself, in the same encapsulation context as every

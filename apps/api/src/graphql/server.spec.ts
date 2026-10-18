@@ -27,6 +27,31 @@ describe("GraphQL Server Bootstrap (Issue 182 / Roadmap 241)", () => {
     await app.close();
   });
 
+  it("responds to { _service } query at /graphql", async () => {
+    const app = Fastify({ logger: false });
+    await registerGraphQLServer(app);
+    await app.ready();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/graphql",
+      payload: { query: "{ _service }" },
+      headers: { "content-type": "application/json" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toEqual({
+      data: {
+        _service: "verixa-api",
+      },
+    });
+
+    await app.close();
+  });
+
+  it("propagates correlation-id header on GraphQL responses", async () => {
+    const app = Fastify({ logger: false });
   it("propagates correlation-id header on GraphQL responses", async () => {
     const app = Fastify({ logger: false });
     // Simulate correlation ID hook

@@ -31,8 +31,16 @@ import {
 import { PrismaClient } from "@verixa/database";
 import {
   CreateOrganization,
+  GetOrganization,
+  GetOrganizationUsers,
+  GetUser,
+  GetUserOrganizations,
+  GetUsersByOrganizationIds,
   InviteUserToOrganization,
+  ListOrganizations,
   PrismaInvitationRepository,
+  PrismaOrganizationMembershipRepository,
+  PrismaOrganizationRepository,
   PrismaUnitOfWork,
   PrismaUserRepository,
   ReactivateUser,
@@ -207,6 +215,12 @@ export interface IdentityUseCases {
   readonly reactivateUser: ReactivateUser;
   readonly createOrganization: CreateOrganization;
   readonly inviteUserToOrganization: InviteUserToOrganization;
+  readonly getUser: GetUser;
+  readonly getOrganization: GetOrganization;
+  readonly getOrganizationUsers: GetOrganizationUsers;
+  readonly getUserOrganizations: GetUserOrganizations;
+  readonly getUsersByOrganizationIds: GetUsersByOrganizationIds;
+  readonly listOrganizations: ListOrganizations;
 }
 
 /** Use cases spanning identity and credentials. */
@@ -300,6 +314,8 @@ export function buildContainer(
     prismaClient ?? new PrismaClient({ datasources: { db: { url: pooledDatabaseUrl() } } });
 
   const users = new PrismaUserRepository(prisma);
+  const organizations = new PrismaOrganizationRepository(prisma);
+  const memberships = new PrismaOrganizationMembershipRepository(prisma);
   const authorization = new PrismaAuthorizationRepository(prisma);
   const invitations = new PrismaInvitationRepository(prisma);
   const unitOfWork = new PrismaUnitOfWork(prisma);
@@ -439,6 +455,12 @@ export function buildContainer(
       // organization and a membership, and those must commit together.
       createOrganization: new CreateOrganization(unitOfWork),
       inviteUserToOrganization: new InviteUserToOrganization(invitations),
+      getUser: new GetUser(users),
+      getOrganization: new GetOrganization(organizations),
+      getOrganizationUsers: new GetOrganizationUsers(memberships, users),
+      getUserOrganizations: new GetUserOrganizations(memberships, organizations),
+      getUsersByOrganizationIds: new GetUsersByOrganizationIds(memberships, users),
+      listOrganizations: new ListOrganizations(organizations),
     },
     credentials: {
       registerUserWithPassword: new RegisterUserWithPassword(
