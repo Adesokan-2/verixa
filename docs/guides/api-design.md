@@ -112,3 +112,33 @@ as YAML but violates the OpenAPI schema must not merge.
 The contract does not try to describe internal persistence details. That
 boundary keeps clients stable when adapters change and makes compatibility
 review a question about requests and responses, not the database schema.
+
+## API Versioning and Deprecation Policy
+
+Verixa adopts URI-path versioning (`/v1/...`) as its primary strategy (see `docs/adr/0012-api-versioning.md`).
+
+1. **Prefix Enforcement**: All functional REST API endpoints reside under a version prefix (e.g. `/v1/auth`, `/v1/audit`). Unversioned requests are rejected immediately with a 400 `VALIDATION_ERROR` by `apps/api/src/plugins/versioning.ts`. Non-API operational routes (`/health`, `/docs`) are explicitly excluded.
+2. **Deprecation & Sunset Headers**:
+   - Routes flagged for deprecation in route options (`config: { deprecated: true, sunset: ... }`) automatically emit `Deprecation: true` and `Sunset: <http-date>` headers per RFC 8594.
+   - Deprecated endpoints carry a minimum notice period of 6 months before being sunset or decommissioned.
+
+## Cursor-based Pagination Convention
+
+Verixa standardizes on keyset cursor-based pagination for list and collection endpoints:
+
+1. **Query Parameters**:
+   - `cursor` (string, optional): Base64url-encoded opaque keyset pointer (`{ id, createdAt }`).
+   - `limit` (integer, optional): Maximum items to return, clamped between 1 and 100 with a default of 50.
+2. **Response Envelope**:
+   All paginated responses return a consistent envelope:
+   ```json
+   {
+     "items": [...],
+     "nextCursor": "eyJpZCI6IjEyMyIsImNyZWF0ZWRBdCI6IjIwMjYtMDEtMDEifQ",
+     "hasMore": true
+   }
+   ```
+   When `hasMore` is false (last page), `nextCursor` is `null`.
+3. **OpenAPI Reusability**: Reusable cursor parameter and envelope definitions are located in `apps/api/openapi/components/pagination.yaml`.
+
+

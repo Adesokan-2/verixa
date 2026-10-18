@@ -10,6 +10,7 @@ import type {
 } from "fastify";
 
 import type { Container } from "../composition-root.js";
+import { registerAuditRoutes } from "../routes/audit.js";
 import { registerAuthRoutes } from "../routes/auth.js";
 import { registerVerificationRoutes } from "../routes/verification.js";
 
@@ -50,6 +51,10 @@ export function registerContextRoutes<TLogger extends FastifyBaseLogger>(
       plugin: (scope) => {
         registerVerificationRoutes(scope);
       },
+    },
+    {
+      prefix: "/audit",
+      plugin: async (scope) => registerAuditRoutes(scope, container),
     },
   ];
 
