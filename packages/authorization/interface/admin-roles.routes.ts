@@ -168,6 +168,21 @@ export function registerAdminAuthorizationRoutes<TLogger extends FastifyBaseLogg
     if (!(await requirePermission(request, reply, "roles:read"))) return;
     return authorization.listRoles();
   });
+  app.post<{ Body: CreateRoleBody }>("/roles", async (request, reply) => {
+    if (!(await requirePermission(request, reply, "roles:write"))) return;
+    if (request.body.name.trim() === "" || request.body.description.trim() === "") {
+      return reply.code(400).send({ error: "name and description are required" });
+    }
+    try {
+      const role = await authorization.createRole({
+        ...request.body,
+        isSystemRole: false,
+      });
+      return reply.code(201).send(role);
+    } catch (error) {
+      return replyError(reply, error);
+    }
+  });
   app.post<{ Body: CreateRoleBody }>(
     "/roles",
     { schema: { body: createRoleBodySchema }, ...jsonSchemaValidation },
@@ -199,6 +214,15 @@ export function registerAdminAuthorizationRoutes<TLogger extends FastifyBaseLogg
       }
     },
   );
+  app.delete<{ Params: RoleParams }>("/roles/:roleId", async (request, reply) => {
+    if (!(await requirePermission(request, reply, "roles:write"))) return;
+    try {
+      await authorization.deleteRole(request.params.roleId);
+      return reply.code(204).send();
+    } catch (error) {
+      return replyError(reply, error);
+    }
+  });
   app.delete<{ Params: RoleParams }>(
     "/roles/:roleId",
     { schema: { params: roleParamsSchema }, ...jsonSchemaValidation },
