@@ -1,4 +1,3 @@
-import { registerAdminAuthorizationRoutes } from "@verixa/authorization";
 import { fileURLToPath } from "node:url";
 
 import fastifySwagger from "@fastify/swagger";
@@ -6,9 +5,12 @@ import fastifySwaggerUi from "@fastify/swagger-ui";
 import { createLogger, type Logger } from "@verixa/shared-kernel";
 import Fastify from "fastify";
 
+import { registerContextRoutes } from "./composition/register-routes.js";
 import type { Container } from "./composition-root.js";
 import { errorResponseSchema, handleApiError } from "./http/error-response.js";
-import { registerContextRoutes } from "./composition/register-routes.js";
+import { assertRouteValidationSchemas } from "./http/route-validation.js";
+import { enforceRegisteredRouteSchemas } from "./openapi/zod-registry.js";
+import { NO_CORS, registerCors, type CorsPolicy } from "./plugins/cors.js";
 import {
   NO_TRANSPORT_SECURITY,
   registerSecurityHeaders,
@@ -31,6 +33,13 @@ import { assertRouteValidationSchemas } from "./http/route-validation.js";
  * `package.json` for two types would be more ceremony than content.
  */
 export type { HstsDirective, SecurityHeadersOptions };
+
+/**
+ * Re-exported for the same reason the security-header types are: callers and
+ * the integration suite should be able to name the policy without reaching
+ * into `src/plugins/`.
+ */
+export type { CorsPolicy };
 
 export interface BuildAppOptions {
   readonly logger?: Logger;
@@ -59,6 +68,16 @@ export interface BuildAppOptions {
    * next to `@verixa/config`, which is the thing this package exists to avoid.
    */
   readonly securityHeaders?: SecurityHeadersOptions;
+  /**
+   * The cross-origin browser policy (Issue 204).
+   *
+   * Defaults to `NO_CORS` — an empty allowlist — for the same reason
+   * `securityHeaders` defaults to the nothing-on shape: the callers that pass
+   * nothing are in-process tests, and `server.ts` always derives this from
+   * validated configuration. Reading the environment here would create a
+   * second, unvalidated config path.
+   */
+  readonly cors?: CorsPolicy;
   /**
    * Honour `X-Forwarded-Proto` / `X-Forwarded-For` from an upstream proxy.
    *
@@ -101,6 +120,13 @@ export function buildApp(options: BuildAppOptions = {}) {
     },
   });
 
+  // Security headers are registered before any route exists, so "all routes
+  // return the configured header set" is true by construction rather than by
+  // every route remembering to ask (Issues 203 and 213). `/health` below is the
+  // proof: it is the one endpoint a deployment is most likely to expose without
+  // thinking about it.
+  registerSecurityHeaders(app, options.securityHeaders ?? NO_TRANSPORT_SECURITY);
+  registerCors(app, options.cors ?? NO_CORS);
   app.setErrorHandler(handleApiError);
   app.addSchema(errorResponseSchema);
   app.addHook("onRoute", (route) => assertRouteValidationSchemas(route));
@@ -148,19 +174,14 @@ export function buildApp(options: BuildAppOptions = {}) {
     return { status: "ok" };
   });
 
-  // Registered on `app` itself, in the same encapsulation context as every
-  // route below, so it covers `/health` and the authenticated routes alike.
-  // See the comment on `registerSecurityHeaders` for why this is not a
-  // `register()`-style plugin.
-  registerSecurityHeaders(app, options.securityHeaders ?? NO_TRANSPORT_SECURITY);
-
   if (options.container !== undefined) {
+    // One registration path, not two. `registerContextRoutes` already mounts
+    // every module at its public prefix — auth at `/auth`, admin at `/admin`,
+    // verification at `/verification`. Mounting them here as well, unprefixed,
+    // duplicated each route set and made the second attempt to register the
+    // same OpenAPI component (`RegisterBody`) throw during boot. It also put
+    // routes at URLs no client calls (`POST /:requestId/evidence`).
     enforceRegisteredRouteSchemas(app);
-    registerAuthRoutes(app, options.container);
-    registerAdminAuthorizationRoutes(app, options.container.authorization);
-    // Takes only the Fastify instance: this route group resolves what it
-    // needs from the request rather than from the container.
-    registerVerificationRoutes(app);
     registerContextRoutes(app, options.container);
   }
 
