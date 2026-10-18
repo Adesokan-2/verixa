@@ -156,6 +156,20 @@ export const SECURITY_HEADERS: FastifyHelmetOptions = {
 };
 
 /**
+ * Applies {@link SECURITY_HEADERS} to every response this instance produces.
+ *
+ * Registered on the root instance in `buildApp`, before any route:
+ * `@fastify/helmet` is `fastify-plugin`-wrapped, so its hook is inherited by
+ * child scopes rather than confined to a prefix, and every route — including
+ * ones later phases add — gets the headers without opting in. Safe by default
+ * only holds if the default is applied at the root: a plugin someone has to
+ * remember to register is a plugin someone will forget.
+ *
+ * Generic over the logger for the same reason `registerAuthRoutes` is (see
+ * `routes/auth.ts`) — the instance `buildApp` produces carries a concrete pino
+ * `Logger`, which is not structurally identical to Fastify's
+ * `FastifyBaseLogger`.
+ */
  * The `Strict-Transport-Security` directive and the HTTP-to-HTTPS redirect
  * (roadmap Issue 213).
  */
@@ -481,6 +495,9 @@ export function registerSecurityHeaders<TLogger extends FastifyBaseLogger>(
     RawReplyDefaultExpression,
     TLogger
   >,
+  options: SecurityHeadersOptions = NO_TRANSPORT_SECURITY,
+): void {
+  app.register(helmet, SECURITY_HEADERS);
   options: SecurityHeadersOptions = DEFAULT_SECURITY_HEADERS_OPTIONS,
 ): void {
   const { hsts: _unusedHelmetHsts, ...helmetHeaders } = SECURITY_HEADERS;

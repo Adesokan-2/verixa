@@ -1,6 +1,7 @@
 import { ConfigError } from "@verixa/config";
 import supertest from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { ConfigError } from "@verixa/config";
 
 import { buildApp, type SecurityHeadersOptions } from "../app.js";
 import { describe, expect, it } from "vitest";
@@ -123,6 +124,15 @@ describe("security headers", () => {
     expect(response.headers["strict-transport-security"]).toContain("max-age=31536000");
   });
 });
+
+import {
+  DEFAULT_HSTS_MAX_AGE_SECONDS,
+  formatHstsHeader,
+  httpsRedirectTarget,
+  isRedirectableHost,
+  securityHeadersFromConfig,
+  type TransportSecurityConfig,
+} from "./security-headers.js";
 
 /**
  * Builds a transport-security config from defaults rather than from a partial

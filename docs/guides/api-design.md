@@ -113,6 +113,37 @@ The contract does not try to describe internal persistence details. That
 boundary keeps clients stable when adapters change and makes compatibility
 review a question about requests and responses, not the database schema.
 
+## Rate limiting
+
+The API applies rate limiting globally across all routes, with support for per-route overrides on abuse-sensitive endpoints (such as `/auth/login` and export routes).
+
+Rate limiting is tracked primarily by authenticated principal (`x-user-id` session/user header or `x-api-key`), falling back to client IP only when unauthenticated. This ensures that attackers cannot bypass quotas by rotating source IP addresses while using stolen credentials or automated scripts.
+
+When a client breaches their allocated quota, the server responds with HTTP status 429 and the standard `RATE_LIMITED` error envelope. In accordance with HTTP standards, a `Retry-After` header is included alongside standard rate limit metadata (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`). Redis backs the distributed counters, with an in-memory sliding/fixed window fallback when running in standalone or local testing environments.
+
+## Idempotency keys for unsafe write operations
+
+Network communication is inherently unreliable. Flaky clients and distributed networks may retry write requests (such as registration, credentials creation, and verification submissions) when an HTTP timeout or dropped connection occurs. Without idempotency support, retrying a create operation risks creating duplicate resources or triggering invalid state transitions.
+
+The API supports an `Idempotency-Key` header on state-mutating write operations (`POST`, `PATCH`):
+
+1. **Deduplication**: When a client sends a request with an `Idempotency-Key`, the key and a SHA-256 fingerprint of the request (method, URL, and body payload) are stored in Redis (or in-memory cache) with a bounded 24-hour TTL (`DEFAULT_IDEMPOTENCY_TTL_SECONDS = 86400`).
+2. **Deterministic Replay**: If an identical request with the same `Idempotency-Key` arrives within the TTL window, the original response status code and body are immediately returned with the `Idempotency-Replayed: true` header. The underlying route handler and domain use case are executed exactly once.
+3. **Conflict Detection**: If a client reuses an active `Idempotency-Key` with a different payload or URL, the request is rejected with HTTP 409 (`CONFLICT`), preventing accidental or malicious parameter alteration.
+4. **Bounded Lifespan**: Once the key expires after its TTL, subsequent requests with the same key are treated as fresh operations.
+
+## Observability and Request Correlation
+
+Traceability across distributed components, background workers, and structured logs is critical when operating authentication, verification, and audit pipelines under real traffic.
+
+### Correlation ID (`X-Request-Id`)
+
+The API implements correlation ID tracking via `apps/api/src/plugins/request-context.ts`:
+
+1. **Inbound Preservation vs Generation**: If an incoming request carries an `X-Request-Id` header (e.g., from an upstream reverse proxy, mobile client, or frontend application), that identifier is preserved without mutation. If missing, the server generates a new UUID v4.
+2. **Context Binding**: The ID is bound to `request.id` and `request.requestId`, and attached to the request's child logger (`request.log`) under `reqId` and `requestId`. Every structured log line emitted during the request lifecycle carries this identifier.
+3. **Response Header & Error Envelopes**: The correlation ID is reflected in the outgoing `X-Request-Id` HTTP response header and mapped directly into the `error.requestId` property of every error response (see `apps/api/src/http/error-response.ts`). This allows clients experiencing failures to report the exact `requestId` for diagnostics without exposing internal stack traces or database errors.
+4. **Outbound Propagation**: When downstream services or third-party webhooks/notifications are dispatched from within a request, `propagateRequestContext(request, headers)` passes the correlation ID forward, preserving distributed trace boundaries until OpenTelemetry distributed tracing spans are introduced.
 ## API Versioning and Deprecation Policy
 
 Verixa adopts URI-path versioning (`/v1/...`) as its primary strategy (see `docs/adr/0012-api-versioning.md`).
