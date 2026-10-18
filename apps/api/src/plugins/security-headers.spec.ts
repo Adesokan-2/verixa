@@ -19,6 +19,15 @@ const productionHsts: SecurityHeadersOptions = {
   enforceHttps: false,
 };
 
+import {
+  DEFAULT_HSTS_MAX_AGE_SECONDS,
+  formatHstsHeader,
+  httpsRedirectTarget,
+  isRedirectableHost,
+  securityHeadersFromConfig,
+  type TransportSecurityConfig,
+} from "./security-headers.js";
+
 /**
  * Integration coverage for the global security-headers plugin (Issue 203).
  *

@@ -44,7 +44,10 @@ function routeSchemas<TLogger extends FastifyBaseLogger>(
         response: {
           201: {
             type: "object",
-            properties: { requestId: { type: "string" }, status: { type: "string" } },
+            properties: {
+              requestId: { type: "string" },
+              status: { type: "string" },
+            },
           },
         },
       },
@@ -139,6 +142,11 @@ export function registerVerificationRoutes<TLogger extends FastifyBaseLogger>(
 ): void {
   const schemas = routeSchemas(fastify);
 
+  fastify.post(
+    "/",
+    { ...schemas.submitVerification, prefixTrailingSlash: "no-slash" },
+    async (req, reply) => {
+      const body = req.body as z.infer<typeof submitVerificationZod>;
   fastify.post("/", schemas.submitVerification, async (req, reply) => {
     const body = req.body as z.infer<typeof submitVerificationZod>;
 
@@ -194,23 +202,31 @@ export function registerVerificationRoutes<TLogger extends FastifyBaseLogger>(
     });
   });
 
+  fastify.post(
+    "/review-queue/:requestId/decision",
+    schemas.decision,
+    async (req, reply) => {
+      if (!checkReviewer(req, reply)) return;
+      const params = req.params as z.infer<typeof requestIdZod>;
+      const body = req.body as z.infer<typeof decisionBodyZod>;
   fastify.post("/review-queue/:requestId/decision", schemas.decision, async (req, reply) => {
     if (!checkReviewer(req, reply)) return;
     const params = req.params as z.infer<typeof requestIdZod>;
     const body = req.body as z.infer<typeof decisionBodyZod>;
 
-    const newStatus =
-      body.decision === "approve"
-        ? "approved"
-        : body.decision === "reject"
-          ? "rejected"
-          : "needs_more_info";
+      const newStatus =
+        body.decision === "approve"
+          ? "approved"
+          : body.decision === "reject"
+            ? "rejected"
+            : "needs_more_info";
 
-    return reply.send({
-      requestId: params.requestId,
-      status: newStatus,
-    });
-  });
+      return reply.send({
+        requestId: params.requestId,
+        status: newStatus,
+      });
+    },
+  );
 }
 
 async function getStreamSize(stream: NodeJS.ReadableStream): Promise<number> {

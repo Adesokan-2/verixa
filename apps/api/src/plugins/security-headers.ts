@@ -158,12 +158,6 @@ export const SECURITY_HEADERS: FastifyHelmetOptions = {
 /**
  * The `Strict-Transport-Security` directive and the HTTP-to-HTTPS redirect
  * (roadmap Issue 213).
- *
- * This module owns the *transport-security* slice of the response headers
- * only. `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` and the
- * baseline CSP belong to Issue 203 and will be added here (or beside it) when
- * that issue lands — deliberately not folded in now, so this change stays
- * reviewable as one threat class: credentials and tokens moving in cleartext.
  */
 
 /** The header name, lower-cased the way Node stores received headers. */
@@ -209,14 +203,21 @@ export interface SecurityHeadersOptions {
 /**
  * The shape `buildApp` uses when the caller supplies no policy at all.
  *
- * Both features off. That sounds like the wrong default for a security
- * control, and it is only safe because of who the caller is: `server.ts`
- * always passes `securityHeadersFromConfig(loadConfig())`, so a process that
- * actually serves traffic always has a policy derived from a validated
- * environment. The bare default exists for in-process tests and for
- * `buildApp()` calls that never bind a port, where an HSTS pin or a redirect
- * would be noise at best and a hang at worst.
+ * Uses the default one-year `Strict-Transport-Security` directive (so baseline
+ * header assertions in Issue 203 pass on `buildApp()` with no arguments) with
+ * `enforceHttps: false`. Callers that explicitly want no HSTS header pass
+ * `{ hsts: null, enforceHttps: false }`, and `server.ts` derives its policy
+ * from validated config via `securityHeadersFromConfig(loadConfig())`.
  */
+export const DEFAULT_SECURITY_HEADERS_OPTIONS: SecurityHeadersOptions = {
+  hsts: {
+    maxAgeSeconds: DEFAULT_HSTS_MAX_AGE_SECONDS,
+    includeSubDomains: true,
+    preload: false,
+  },
+  enforceHttps: false,
+};
+
 export const NO_TRANSPORT_SECURITY: SecurityHeadersOptions = {
   hsts: null,
   enforceHttps: false,
@@ -480,6 +481,11 @@ export function registerSecurityHeaders<TLogger extends FastifyBaseLogger>(
     RawReplyDefaultExpression,
     TLogger
   >,
+  options: SecurityHeadersOptions = DEFAULT_SECURITY_HEADERS_OPTIONS,
+): void {
+  const { hsts: _unusedHelmetHsts, ...helmetHeaders } = SECURITY_HEADERS;
+  app.register(helmet, { ...helmetHeaders, hsts: false });
+
   options: SecurityHeadersOptions = NO_TRANSPORT_SECURITY,
 ): void {
   app.register(helmet, SECURITY_HEADERS);

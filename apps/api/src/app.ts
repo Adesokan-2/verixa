@@ -7,12 +7,16 @@ import Fastify from "fastify";
 
 import { registerContextRoutes } from "./composition/register-routes.js";
 import type { Container } from "./composition-root.js";
+import { registerContextRoutes } from "./composition/register-routes.js";
+import { errorResponseSchema, handleApiError } from "./http/error-response.js";
+import { assertRouteValidationSchemas } from "./http/route-validation.js";
+import { enforceRegisteredRouteSchemas } from "./openapi/zod-registry.js";
 import { errorResponseSchema, handleApiError } from "./http/error-response.js";
 import { assertRouteValidationSchemas } from "./http/route-validation.js";
 import { enforceRegisteredRouteSchemas } from "./openapi/zod-registry.js";
 import { NO_CORS, registerCors, type CorsPolicy } from "./plugins/cors.js";
 import {
-  NO_TRANSPORT_SECURITY,
+  DEFAULT_SECURITY_HEADERS_OPTIONS,
   registerSecurityHeaders,
   type HstsDirective,
   type SecurityHeadersOptions,
@@ -126,6 +130,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   // every route remembering to ask (Issues 203 and 213). `/health` below is the
   // proof: it is the one endpoint a deployment is most likely to expose without
   // thinking about it.
+  registerSecurityHeaders(app, options.securityHeaders ?? DEFAULT_SECURITY_HEADERS_OPTIONS);
   registerSecurityHeaders(app, options.securityHeaders ?? NO_TRANSPORT_SECURITY);
   registerCors(app, options.cors ?? NO_CORS);
   app.setErrorHandler(handleApiError);

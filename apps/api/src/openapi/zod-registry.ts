@@ -23,6 +23,18 @@ type App<TLogger extends FastifyBaseLogger> = FastifyInstance<
   TLogger
 >;
 
+function getOrCreateAppSchemas(app: FastifyInstance): Map<string, OpenApiSchema> {
+  // Walk up encapsulated child scopes if needed, or check if `app` already
+  // shares `getSchema` with a registered root instance.
+  const existing = schemasByApp.get(app);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const created = new Map<string, OpenApiSchema>();
+  schemasByApp.set(app, created);
+  return created;
+}
+
 /** Register one Zod DTO as a reusable Fastify validator and OpenAPI component. */
 export function registerZodSchema<TLogger extends FastifyBaseLogger, TSchema extends ZodTypeAny>(
   app: App<TLogger>,
@@ -33,6 +45,8 @@ export function registerZodSchema<TLogger extends FastifyBaseLogger, TSchema ext
     throw new Error(`Invalid OpenAPI schema name: ${name}`);
   }
 
+  const appSchemas = getOrCreateAppSchemas(app);
+  if (appSchemas.has(name) || app.getSchema(name) !== undefined) {
   // Fastify's `addSchema`/`getSchema` are declared on the default
   // `FastifyInstance` while this function is generic over the concrete logger
   // `buildApp` produces, and the two are not structurally assignable under
@@ -52,7 +66,6 @@ export function registerZodSchema<TLogger extends FastifyBaseLogger, TSchema ext
   const component = { ...jsonSchema, $id: name };
   schemaHost.addSchema(component);
   appSchemas.set(name, component);
-  schemasByApp.set(app, appSchemas);
   return { $ref: `${name}#` };
 }
 
@@ -67,6 +80,12 @@ export function getOpenApiComponents(app: FastifyInstance): {
 export function enforceRegisteredRouteSchemas<TLogger extends FastifyBaseLogger>(
   app: App<TLogger>,
 ): void {
+  const rootSchemas = getOrCreateAppSchemas(app);
+  app.addHook("onRegister", (instance) => {
+    schemasByApp.set(instance, rootSchemas);
+  });
+
+  app.addHook("onRoute", (route: RouteOptions) => {
   // A regular function with an explicit `this`, not an arrow: Fastify invokes
   // the hook with `this` bound to the instance the route is being added to,
   // and routes are added inside encapsulated plugins (`/auth`, `/admin`,
@@ -93,6 +112,10 @@ export function enforceRegisteredRouteSchemas<TLogger extends FastifyBaseLogger>
         throw new Error(`${method} ${route.url} ${key} must use a registered Zod schema`);
       }
       const name = ref.slice(0, -1);
+      if (!rootSchemas.has(name) && app.getSchema(name) === undefined) {
+        throw new Error(
+          `${route.method} ${route.url} ${key} references unregistered schema ${name}`,
+        );
       if (!schemasByApp.get(this)?.has(name)) {
         throw new Error(`${method} ${route.url} ${key} references unregistered schema ${name}`);
       }
